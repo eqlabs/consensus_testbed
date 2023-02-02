@@ -3,9 +3,12 @@ use std::io;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
+use types::Certificate;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub(crate) enum ConsensusMessage {}
+pub(crate) enum ConsensusMessage {
+    CertificateMessage(Certificate),
+}
 
 #[derive(Default)]
 pub(crate) struct ConsensusCodec(LengthDelimitedCodec);

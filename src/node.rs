@@ -5,7 +5,7 @@ use crypto::NetworkKeyPair;
 use fastcrypto::{
     bls12381::min_sig::BLS12381KeyPair,
     hash::Hash,
-    traits::{KeyPair, ToFromBytes},
+    traits::{KeyPair},
 };
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
@@ -25,7 +25,6 @@ use std::{
 };
 use storage::CertificateStore;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
     sync::watch,
 };
 use tracing::{debug, info};
@@ -139,7 +138,7 @@ impl Node {
 
 #[async_trait::async_trait]
 impl Handshake for Node {
-    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+    async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
         // let stream = self.borrow_stream(&mut conn);
 
         // let borrow: &BLS12381KeyPair = self.own_keypair.borrow();

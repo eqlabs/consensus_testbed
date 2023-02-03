@@ -25,7 +25,7 @@ use types::{
 use crate::node::Node;
 
 // The number of nodes to spawn.
-const NUM_NODES: u16 = 10;
+const NUM_NODES: u16 = 4;
 // The amount of time in seconds the nodes are to be running.
 const RUNTIME_SECS: u64 = 60;
 
@@ -70,7 +70,7 @@ async fn main() {
     let cert_store = make_certificate_store(&Path::new("cert_store"));
     // Start the consensus for all the nodes.
     for node in nodes.iter() {
-        node.start_consensus(committee.clone(), store.clone(), cert_store.clone());
+        node.start_consensus(node.node.name().to_owned(), committee.clone(), store.clone(), cert_store.clone()).await;
     }
 
     // Wait for a desired amount of time to allow the nodes to do some work.

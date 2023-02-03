@@ -2,11 +2,7 @@ use crate::message::{ConsensusCodec, ConsensusMessage};
 use config::Committee;
 use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
 use crypto::NetworkKeyPair;
-use fastcrypto::{
-    bls12381::min_sig::BLS12381KeyPair,
-    hash::Hash,
-    traits::{KeyPair},
-};
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, hash::Hash, traits::KeyPair};
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node as Pea2PeaNode, Pea2Pea,
@@ -24,15 +20,13 @@ use std::{
     sync::Arc,
 };
 use storage::CertificateStore;
-use tokio::{
-    sync::watch,
-};
+use tokio::sync::watch;
 use tracing::{debug, info};
 use types::{metered_channel, Certificate, ConsensusStore, PreSubscribedBroadcastSender};
 
 #[derive(Clone)]
 pub(crate) struct Node {
-    node: Pea2PeaNode,
+    pub(crate) node: Pea2PeaNode,
     // consensus
     pub(crate) own_keypair: Arc<BLS12381KeyPair>,
     pub(crate) own_network_keypair: Arc<NetworkKeyPair>,
@@ -73,8 +67,9 @@ impl Node {
     }
 
     /// Spawn a task handling the consensus loop.
-    pub(crate) fn start_consensus(
+    pub(crate) async fn start_consensus(
         &self,
+        name: String,
         committee: Committee,
         store: Arc<ConsensusStore>,
         cert_store: CertificateStore,
@@ -82,18 +77,18 @@ impl Node {
         let registry = Registry::new();
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
         let protocol = Bullshark::new(committee.clone(), store.clone(), 50, metrics.clone());
-        let mut tx_shutdown = PreSubscribedBroadcastSender::new(1);
+        let mut tx_shutdown = PreSubscribedBroadcastSender::new(25);
         let (tx_commited_certificates, mut rx_commited_certificates) = metered_channel::channel(
-            100,
+            1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
         let (tx_consensus_round_updates, mut _rx_consensus_round_updates) = watch::channel(0);
         let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
-            100,
+            1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        let (tx_sequence, mut rx_sequence) = metered_channel::channel(
-            100,
+        let (tx_sequence, mut _rx_sequence) = metered_channel::channel(
+            1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
         let _handle = Consensus::spawn(
@@ -108,31 +103,41 @@ impl Node {
             protocol,
             metrics.clone(),
         );
-        let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
-        let public = borrow.public().clone();
+        let genesis = Certificate::genesis(&committee)
+        .iter()
+        .map(|x| x.digest())
+        .collect::<BTreeSet<_>>();
+        debug!("genesis: {:?}", &genesis);
+        let keys: Vec<_> = committee
+        .authorities
+        .iter()
+        .map(|(a, _)| a.clone())
+        .collect();
+        debug!("keys: {:?}", keys);
+        let (mut certificates, next_parents) =
+            test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &keys);
+
+        // Make two certificate (f+1) with round 3 to trigger the commits.
+        let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[0].clone(), 3, next_parents.clone());
+        certificates.push_back(certificate);
+        let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[1].clone(), 3, next_parents.clone());
+        certificates.push_back(certificate);
+        let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
+        certificates.push_back(certificate);
+        debug!("certs created: {:?}", certificates);
+        for cert in certificates {
+            tx_new_certificates.send(cert).await.ok();
+        }
+        let name_clone =  name.clone();
         tokio::spawn(async move {
-            let genesis = Certificate::genesis(&committee)
-                .iter()
-                .map(|x| x.digest())
-                .collect::<BTreeSet<_>>();
-            let mut keys: Vec<_> = Vec::new();
-            keys.push(public.clone());
-            let nodes: Vec<_> = keys.iter().take(3).cloned().collect();
-            let mut certificates = VecDeque::new();
-            let (out, _parents) =
-                test_utils::make_optimal_certificates(&committee, 1..=5, &genesis, &nodes);
-            certificates.extend(out);
-            debug!("certs created: {:?}", certificates);
-            for cert in certificates {
-                tx_new_certificates.send(cert).await.ok();
-            }
-            loop {
-                tokio::select! {
-                    committed = rx_commited_certificates.recv() => if let Some(c) = committed {info!("received commited: {:?}", c);},
-                    sequence = rx_sequence.recv() => if let Some(s) = sequence {info!("received sequence: {:?}", s);},
-                }
+            while let Some(c) = rx_commited_certificates.recv().await {
+                debug!("{} commited: {:?}", name_clone, c);
             }
         });
+        debug!("handle: {:?}", _handle.await);
     }
 }
 

@@ -7,7 +7,7 @@ use types::Certificate;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) enum ConsensusMessage {
-    CertificateMessage(Certificate),
+    CertificateMessage(Vec<Certificate>),
 }
 
 #[derive(Default)]

@@ -141,11 +141,10 @@ impl Node {
             tx_new_certificates.send(cert).await.ok();
         }
         let name_clone = name.clone();
-        tokio::spawn(async move {
-            while let Some(c) = rx_commited_certificates.recv().await {
-                debug!("{} commited: {:?}", name_clone, c);
-            }
-        });
+        while let Some(c) = rx_commited_certificates.recv().await {
+            debug!("{} commited: {:?}", name_clone, c);
+            self.broadcast(ConsensusMessage::CertificateMessage(c.1)).ok();
+        }
         debug!("handle: {:?}", _handle.await);
     }
 }
@@ -181,7 +180,7 @@ impl Reading for Node {
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
         match message {
             ConsensusMessage::CertificateMessage(a) => {
-                debug!("received message: {:?}", a);
+                debug!("{} received message: {:?}", self.node.name(), a);
                 Ok(())
             }
         }

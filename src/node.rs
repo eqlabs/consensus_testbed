@@ -17,8 +17,8 @@ use rand::{
     SeedableRng,
 };
 use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    borrow::{Borrow},
+    collections::{BTreeSet, HashSet},
     io,
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -28,7 +28,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::watch,
 };
-use tracing::{debug, info};
+use tracing::{debug};
 use types::{metered_channel, Certificate, ConsensusStore, PreSubscribedBroadcastSender};
 
 #[derive(Clone)]

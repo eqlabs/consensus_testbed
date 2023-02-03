@@ -1,7 +1,7 @@
 use crate::message::{ConsensusCodec, ConsensusMessage};
 use config::{Authority, Committee};
 use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
-use crypto::{NetworkKeyPair, PublicKey};
+use crypto::{NetworkKeyPair};
 use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
 use fastcrypto::{
     hash::Hash,
@@ -22,21 +22,15 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     io,
     net::SocketAddr,
-    path::Path,
     str::FromStr,
     sync::Arc,
 };
 use storage::CertificateStore;
-use store::rocks::ReadWriteOptions;
-use store::{
-    reopen,
-    rocks::{self, DBMap, MetricConf},
-};
 use tokio::{io::AsyncWriteExt, sync::watch};
 use tracing::debug;
 use types::{
-    metered_channel, Certificate, CertificateDigest, CommittedSubDagShell, ConsensusStore,
-    PreSubscribedBroadcastSender, Round, SequenceNumber,
+    metered_channel, Certificate, ConsensusStore,
+    PreSubscribedBroadcastSender,
 };
 
 #[derive(Clone)]
@@ -82,7 +76,7 @@ impl Node {
     }
 
     /// Spawn a task handling the consensus loop.
-    pub(crate) fn start_consensus(&self) {
+    pub(crate) fn start_consensus(&self, store: Arc<ConsensusStore>, cert_store: CertificateStore) {
         let borrow: &NetworkKeyPair = self.own_network_keypair.borrow();
         let network_key = borrow.public().clone();
         let me = Authority {
@@ -98,23 +92,21 @@ impl Node {
             authorities,
             epoch: 0,
         };
-        let store = make_consensus_store(&Path::new("store"));
-        let cert_store = make_certificate_store(&Path::new("cert_store"));
         let registry = Registry::new();
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
         let protocol = Bullshark::new(committee.clone(), store.clone(), 50, metrics.clone());
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(1);
-        let (tx_commited_certificates, rx_commited_certificates) = metered_channel::channel(
-            1,
+        let (tx_commited_certificates, _rx_commited_certificates) = metered_channel::channel(
+            100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
         let (tx_consensus_round_updates, _rx_consensus_round_updates) = watch::channel(0);
         let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
-            1,
+            100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        let (tx_sequence, rx_sequence) = metered_channel::channel(
-            1,
+        let (tx_sequence, _rx_sequence) = metered_channel::channel(
+            100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
         let _handle = Consensus::spawn(
@@ -138,11 +130,12 @@ impl Node {
             keys.push(public.clone());
             let nodes: Vec<_> = keys.iter().take(3).cloned().collect();
             let mut certificates = VecDeque::new();
-            let (out, parents) =
+            let (out, _parents) =
                 test_utils::make_optimal_certificates(&committee, 1..=1, &genesis, &nodes);
             certificates.extend(out);
+            debug!("certs created: {:?}", certificates);
             for cert in certificates {
-                tx_new_certificates.send(cert).await;
+                tx_new_certificates.send(cert).await.ok();
             }
         });
     }
@@ -188,53 +181,4 @@ impl Writing for Node {
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
     }
-}
-
-pub fn make_consensus_store(store_path: &std::path::Path) -> Arc<ConsensusStore> {
-    const LAST_COMMITTED_CF: &str = "last_committed";
-    const SEQUENCE_CF: &str = "sequence";
-
-    let rocksdb = rocks::open_cf(
-        store_path,
-        None,
-        MetricConf::default(),
-        &[LAST_COMMITTED_CF, SEQUENCE_CF],
-    )
-    .expect("Failed to create database");
-
-    let (last_committed_map, sequence_map) = reopen!(&rocksdb,
-        LAST_COMMITTED_CF;<PublicKey, Round>,
-        SEQUENCE_CF;<SequenceNumber, CommittedSubDagShell>
-    );
-
-    Arc::new(ConsensusStore::new(last_committed_map, sequence_map))
-}
-
-pub fn make_certificate_store(store_path: &std::path::Path) -> CertificateStore {
-    const CERTIFICATES_CF: &str = "certificates";
-    const CERTIFICATE_DIGEST_BY_ROUND_CF: &str = "certificate_digest_by_round";
-    const CERTIFICATE_DIGEST_BY_ORIGIN_CF: &str = "certificate_digest_by_origin";
-
-    let rocksdb = rocks::open_cf(
-        store_path,
-        None,
-        MetricConf::default(),
-        &[
-            CERTIFICATES_CF,
-            CERTIFICATE_DIGEST_BY_ROUND_CF,
-            CERTIFICATE_DIGEST_BY_ORIGIN_CF,
-        ],
-    )
-    .expect("Failed creating database");
-
-    let (certificate_map, certificate_digest_by_round_map, certificate_digest_by_origin_map) = reopen!(&rocksdb,
-        CERTIFICATES_CF;<CertificateDigest, Certificate>,
-        CERTIFICATE_DIGEST_BY_ROUND_CF;<(Round, PublicKey), CertificateDigest>,
-        CERTIFICATE_DIGEST_BY_ORIGIN_CF;<(PublicKey, Round), CertificateDigest>);
-
-    CertificateStore::new(
-        certificate_map,
-        certificate_digest_by_round_map,
-        certificate_digest_by_origin_map,
-    )
 }

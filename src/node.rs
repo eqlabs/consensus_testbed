@@ -1,9 +1,9 @@
 use crate::message::{ConsensusCodec, ConsensusMessage};
-use config::{Committee};
+use config::Committee;
 use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
-use crypto::{NetworkKeyPair};
-use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
+use crypto::NetworkKeyPair;
 use fastcrypto::{
+    bls12381::min_sig::BLS12381KeyPair,
     hash::Hash,
     traits::{KeyPair, ToFromBytes},
 };
@@ -24,12 +24,12 @@ use std::{
     sync::Arc,
 };
 use storage::CertificateStore;
-use tokio::{io::AsyncWriteExt, sync::watch};
-use tracing::{debug, info};
-use types::{
-    metered_channel, Certificate, ConsensusStore,
-    PreSubscribedBroadcastSender,
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::watch,
 };
+use tracing::{debug, info};
+use types::{metered_channel, Certificate, ConsensusStore, PreSubscribedBroadcastSender};
 
 #[derive(Clone)]
 pub(crate) struct Node {
@@ -74,7 +74,12 @@ impl Node {
     }
 
     /// Spawn a task handling the consensus loop.
-    pub(crate) fn start_consensus(&self, committee: Committee, store: Arc<ConsensusStore>, cert_store: CertificateStore) {
+    pub(crate) fn start_consensus(
+        &self,
+        committee: Committee,
+        store: Arc<ConsensusStore>,
+        cert_store: CertificateStore,
+    ) {
         let registry = Registry::new();
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
         let protocol = Bullshark::new(committee.clone(), store.clone(), 50, metrics.clone());

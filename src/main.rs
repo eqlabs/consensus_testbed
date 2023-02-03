@@ -1,28 +1,26 @@
 mod message;
 mod node;
 
-use std::borrow::Borrow;
-use std::collections::BTreeMap;
-use std::path::Path;
-use std::str::FromStr;
-use std::{time::Duration, sync::Arc};
+use std::{
+    borrow::Borrow, collections::BTreeMap, path::Path, str::FromStr, sync::Arc, time::Duration,
+};
 
 use config::{Authority, Committee};
-use crypto::{PublicKey, NetworkKeyPair};
-use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
-use fastcrypto::traits::KeyPair;
+use crypto::{NetworkKeyPair, PublicKey};
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
 use multiaddr::Multiaddr;
 use pea2pea::{connect_nodes, Topology};
 use storage::CertificateStore;
-use store::rocks::ReadWriteOptions;
 use store::{
     reopen,
-    rocks::{self, DBMap, MetricConf},
+    rocks::{self, DBMap, MetricConf, ReadWriteOptions},
 };
 use tokio::time::sleep;
 use tracing::debug;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
-use types::{ConsensusStore, Round, CommittedSubDagShell, SequenceNumber, CertificateDigest, Certificate};
+use types::{
+    Certificate, CertificateDigest, CommittedSubDagShell, ConsensusStore, Round, SequenceNumber,
+};
 
 use crate::node::Node;
 
@@ -70,7 +68,7 @@ async fn main() {
 
     let store = make_consensus_store(&Path::new("store"));
     let cert_store = make_certificate_store(&Path::new("cert_store"));
-// Start the consensus for all the nodes.
+    // Start the consensus for all the nodes.
     for node in nodes.iter() {
         node.start_consensus(committee.clone(), store.clone(), cert_store.clone());
     }

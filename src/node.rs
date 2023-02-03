@@ -127,9 +127,11 @@ impl Node {
             for cert in certificates {
                 tx_new_certificates.send(cert).await.ok();
             }
-            tokio::select! {
-                commited = rx_commited_certificates.recv() => info!("received commited: {:?}", commited),
-                sequence = rx_sequence.recv() => info!("received sequence: {:?}", sequence),
+            loop {
+                tokio::select! {
+                    committed = rx_commited_certificates.recv() => if let Some(c) = committed {info!("received commited: {:?}", c);},
+                    sequence = rx_sequence.recv() => if let Some(s) = sequence {info!("received sequence: {:?}", s);},
+                }
             }
         });
     }
@@ -138,13 +140,14 @@ impl Node {
 #[async_trait::async_trait]
 impl Handshake for Node {
     async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
-        let stream = self.borrow_stream(&mut conn);
+        // let stream = self.borrow_stream(&mut conn);
 
-        let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
-        let public = borrow.public().clone();
-        let mut src = public.as_bytes();
-        stream.write_all_buf(&mut src).await?;
+        // let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
+        // let public = borrow.public().clone();
+        // let mut src = public.as_bytes();
+        // stream.write_all_buf(&mut src).await?;
 
+        // stream.read(buf);
         Ok(conn)
     }
 }

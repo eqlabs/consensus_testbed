@@ -1,8 +1,12 @@
 use crate::message::{ConsensusCodec, ConsensusMessage};
 use config::Committee;
 use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
-use crypto::NetworkKeyPair;
-use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, hash::Hash, traits::KeyPair};
+use crypto::{NetworkKeyPair, PublicKey};
+use fastcrypto::{
+    bls12381::min_sig::BLS12381KeyPair,
+    hash::Hash,
+    traits::{KeyPair, ToFromBytes},
+};
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node as Pea2PeaNode, Pea2Pea,
@@ -13,14 +17,17 @@ use rand::{
     SeedableRng,
 };
 use std::{
-    borrow::Borrow,
-    collections::{BTreeSet, VecDeque},
+    borrow::{Borrow, BorrowMut},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io,
     net::SocketAddr,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use storage::CertificateStore;
-use tokio::sync::watch;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::watch,
+};
 use tracing::{debug, info};
 use types::{metered_channel, Certificate, ConsensusStore, PreSubscribedBroadcastSender};
 
@@ -31,6 +38,7 @@ pub(crate) struct Node {
     pub(crate) own_keypair: Arc<BLS12381KeyPair>,
     pub(crate) own_network_keypair: Arc<NetworkKeyPair>,
     // likely peer keys
+    pub(crate) other_keys: Arc<Mutex<HashSet<PublicKey>>>,
 }
 
 impl Pea2Pea for Node {
@@ -56,6 +64,7 @@ impl Node {
             node: Pea2PeaNode::new(config),
             own_keypair,
             own_network_keypair,
+            other_keys: Arc::new(Mutex::new(HashSet::new())),
         };
 
         node.enable_handshake().await;
@@ -104,34 +113,34 @@ impl Node {
             metrics.clone(),
         );
         let genesis = Certificate::genesis(&committee)
-        .iter()
-        .map(|x| x.digest())
-        .collect::<BTreeSet<_>>();
+            .iter()
+            .map(|x| x.digest())
+            .collect::<BTreeSet<_>>();
         debug!("genesis: {:?}", &genesis);
         let keys: Vec<_> = committee
-        .authorities
-        .iter()
-        .map(|(a, _)| a.clone())
-        .collect();
+            .authorities
+            .iter()
+            .map(|(a, _)| a.clone())
+            .collect();
         debug!("keys: {:?}", keys);
         let (mut certificates, next_parents) =
             test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &keys);
 
         // Make two certificate (f+1) with round 3 to trigger the commits.
         let (_, certificate) =
-        test_utils::mock_certificate(&committee, keys[0].clone(), 3, next_parents.clone());
+            test_utils::mock_certificate(&committee, keys[0].clone(), 3, next_parents.clone());
         certificates.push_back(certificate);
         let (_, certificate) =
-        test_utils::mock_certificate(&committee, keys[1].clone(), 3, next_parents.clone());
+            test_utils::mock_certificate(&committee, keys[1].clone(), 3, next_parents.clone());
         certificates.push_back(certificate);
         let (_, certificate) =
-        test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
+            test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
         certificates.push_back(certificate);
         debug!("certs created: {:?}", certificates);
         for cert in certificates {
             tx_new_certificates.send(cert).await.ok();
         }
-        let name_clone =  name.clone();
+        let name_clone = name.clone();
         tokio::spawn(async move {
             while let Some(c) = rx_commited_certificates.recv().await {
                 debug!("{} commited: {:?}", name_clone, c);
@@ -143,15 +152,19 @@ impl Node {
 
 #[async_trait::async_trait]
 impl Handshake for Node {
-    async fn perform_handshake(&self, conn: Connection) -> io::Result<Connection> {
-        // let stream = self.borrow_stream(&mut conn);
+    async fn perform_handshake(&self, mut conn: Connection) -> io::Result<Connection> {
+        let stream = self.borrow_stream(&mut conn);
 
-        // let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
-        // let public = borrow.public().clone();
-        // let mut src = public.as_bytes();
-        // stream.write_all_buf(&mut src).await?;
+        let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
+        let public = borrow.public().clone();
+        let mut src = public.as_bytes();
+        stream.write_all_buf(&mut src).await?;
 
-        // stream.read(buf);
+        let mut buf = [0u8; 1024];
+        stream.read(&mut buf).await?;
+        let other = PublicKey::from_bytes(&buf[..96]).unwrap();
+        let others: &Mutex<HashSet<PublicKey>> = self.other_keys.borrow();
+        others.lock().unwrap().insert(other);
         Ok(conn)
     }
 }

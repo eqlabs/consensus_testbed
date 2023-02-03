@@ -42,6 +42,9 @@ async fn main() {
 
     // Connect the nodes in a dense mesh.
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
+    for node in nodes.iter() {
+        debug!("node other keys: {:?}", node.other_keys);
+    }
 
     // Create the committee
     let mut authorities = BTreeMap::new();
@@ -69,8 +72,15 @@ async fn main() {
     let store = make_consensus_store(&Path::new("store"));
     let cert_store = make_certificate_store(&Path::new("cert_store"));
     // Start the consensus for all the nodes.
-    for node in nodes.iter() {
-        node.start_consensus(node.node.name().to_owned(), committee.clone(), store.clone(), cert_store.clone()).await;
+    for node in nodes.iter().cloned() {
+        let committee = committee.clone();
+        let store = store.clone();
+        let cert_store = cert_store.clone();
+
+        tokio::spawn(async move {
+            node.start_consensus(node.node.name().to_owned(), committee, store, cert_store)
+                .await
+        });
     }
 
     // Wait for a desired amount of time to allow the nodes to do some work.

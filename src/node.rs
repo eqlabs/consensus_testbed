@@ -121,7 +121,7 @@ impl Node {
             let nodes: Vec<_> = keys.iter().take(3).cloned().collect();
             let mut certificates = VecDeque::new();
             let (out, _parents) =
-                test_utils::make_optimal_certificates(&committee, 1..=1, &genesis, &nodes);
+                test_utils::make_optimal_certificates(&committee, 1..=5, &genesis, &nodes);
             certificates.extend(out);
             debug!("certs created: {:?}", certificates);
             for cert in certificates {

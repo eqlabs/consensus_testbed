@@ -1,10 +1,17 @@
 mod message;
 mod node;
 
+use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::str::FromStr;
 use std::{time::Duration, sync::Arc};
 
-use crypto::PublicKey;
+use config::{Authority, Committee};
+use crypto::{PublicKey, NetworkKeyPair};
+use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
+use fastcrypto::traits::KeyPair;
+use multiaddr::Multiaddr;
 use pea2pea::{connect_nodes, Topology};
 use storage::CertificateStore;
 use store::rocks::ReadWriteOptions;
@@ -13,6 +20,7 @@ use store::{
     rocks::{self, DBMap, MetricConf},
 };
 use tokio::time::sleep;
+use tracing::debug;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use types::{ConsensusStore, Round, CommittedSubDagShell, SequenceNumber, CertificateDigest, Certificate};
 
@@ -30,18 +38,41 @@ async fn main() {
 
     // Create a number of nodes.
     let mut nodes = Vec::with_capacity(NUM_NODES as usize);
-    for _ in 0..NUM_NODES {
-        nodes.push(Node::new("node_name".to_string(), NUM_NODES - 1).await);
+    for i in 0..NUM_NODES {
+        nodes.push(Node::new(format!("node {}", i), NUM_NODES - 1).await);
     }
 
     // Connect the nodes in a dense mesh.
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
 
+    // Create the committee
+    let mut authorities = BTreeMap::new();
+    for (id, node) in nodes.iter().enumerate() {
+        let borrow: &NetworkKeyPair = node.own_network_keypair.borrow();
+        let network_key = borrow.public().clone();
+        let primary_port = 3000 + id;
+        let s = format!("/ip4/127.0.0.1/udp/{}", primary_port);
+        let me = Authority {
+            stake: 1,
+            primary_address: Multiaddr::from_str(s.as_str()).unwrap(),
+            network_key,
+        };
+        let borrow: &BLS12381KeyPair = node.own_keypair.borrow();
+        let public = borrow.public().clone();
+        authorities.insert(public.clone(), me);
+    }
+    let committee = Committee {
+        authorities,
+        epoch: 0,
+    };
+
+    debug!("committee: {:?}", &committee);
+
     let store = make_consensus_store(&Path::new("store"));
     let cert_store = make_certificate_store(&Path::new("cert_store"));
 // Start the consensus for all the nodes.
-    for node in &nodes {
-        node.start_consensus(store.clone(), cert_store.clone());
+    for node in nodes.iter() {
+        node.start_consensus(committee.clone(), store.clone(), cert_store.clone());
     }
 
     // Wait for a desired amount of time to allow the nodes to do some work.

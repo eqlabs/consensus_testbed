@@ -1,5 +1,5 @@
 use crate::message::{ConsensusCodec, ConsensusMessage};
-use config::{Authority, Committee};
+use config::{Committee};
 use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
 use crypto::{NetworkKeyPair};
 use fastcrypto::bls12381::min_sig::BLS12381KeyPair;
@@ -7,7 +7,6 @@ use fastcrypto::{
     hash::Hash,
     traits::{KeyPair, ToFromBytes},
 };
-use multiaddr::Multiaddr;
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
     Config, Connection, ConnectionSide, Node as Pea2PeaNode, Pea2Pea,
@@ -19,15 +18,14 @@ use rand::{
 };
 use std::{
     borrow::Borrow,
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeSet, VecDeque},
     io,
     net::SocketAddr,
-    str::FromStr,
     sync::Arc,
 };
 use storage::CertificateStore;
 use tokio::{io::AsyncWriteExt, sync::watch};
-use tracing::debug;
+use tracing::{debug, info};
 use types::{
     metered_channel, Certificate, ConsensusStore,
     PreSubscribedBroadcastSender,
@@ -37,8 +35,8 @@ use types::{
 pub(crate) struct Node {
     node: Pea2PeaNode,
     // consensus
-    own_keypair: Arc<BLS12381KeyPair>,
-    own_network_keypair: Arc<NetworkKeyPair>,
+    pub(crate) own_keypair: Arc<BLS12381KeyPair>,
+    pub(crate) own_network_keypair: Arc<NetworkKeyPair>,
     // likely peer keys
 }
 
@@ -76,36 +74,21 @@ impl Node {
     }
 
     /// Spawn a task handling the consensus loop.
-    pub(crate) fn start_consensus(&self, store: Arc<ConsensusStore>, cert_store: CertificateStore) {
-        let borrow: &NetworkKeyPair = self.own_network_keypair.borrow();
-        let network_key = borrow.public().clone();
-        let me = Authority {
-            stake: 1,
-            primary_address: Multiaddr::from_str("/ip4/127.0.0.1/udp/3000").unwrap(),
-            network_key,
-        };
-        let mut authorities = BTreeMap::new();
-        let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
-        let public = borrow.public().clone();
-        authorities.insert(public.clone(), me);
-        let committee = Committee {
-            authorities,
-            epoch: 0,
-        };
+    pub(crate) fn start_consensus(&self, committee: Committee, store: Arc<ConsensusStore>, cert_store: CertificateStore) {
         let registry = Registry::new();
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
         let protocol = Bullshark::new(committee.clone(), store.clone(), 50, metrics.clone());
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(1);
-        let (tx_commited_certificates, _rx_commited_certificates) = metered_channel::channel(
+        let (tx_commited_certificates, mut rx_commited_certificates) = metered_channel::channel(
             100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        let (tx_consensus_round_updates, _rx_consensus_round_updates) = watch::channel(0);
+        let (tx_consensus_round_updates, mut _rx_consensus_round_updates) = watch::channel(0);
         let (tx_new_certificates, rx_new_certificates) = metered_channel::channel(
             100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        let (tx_sequence, _rx_sequence) = metered_channel::channel(
+        let (tx_sequence, mut rx_sequence) = metered_channel::channel(
             100,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
@@ -121,6 +104,8 @@ impl Node {
             protocol,
             metrics.clone(),
         );
+        let borrow: &BLS12381KeyPair = self.own_keypair.borrow();
+        let public = borrow.public().clone();
         tokio::spawn(async move {
             let genesis = Certificate::genesis(&committee)
                 .iter()
@@ -136,6 +121,10 @@ impl Node {
             debug!("certs created: {:?}", certificates);
             for cert in certificates {
                 tx_new_certificates.send(cert).await.ok();
+            }
+            tokio::select! {
+                commited = rx_commited_certificates.recv() => info!("received commited: {:?}", commited),
+                sequence = rx_sequence.recv() => info!("received sequence: {:?}", sequence),
             }
         });
     }
@@ -167,7 +156,7 @@ impl Reading for Node {
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
         match message {
             ConsensusMessage::CertificateMessage(a) => {
-                debug!("{:?}", a);
+                debug!("received message: {:?}", a);
                 Ok(())
             }
         }

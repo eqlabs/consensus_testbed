@@ -42,7 +42,7 @@ pub(crate) struct Node {
     pub(crate) other_keys: Arc<Mutex<HashSet<PublicKey>>>,
 
     // channels
-    tx_new_certificates: Option<Arc<Mutex<Sender<Certificate>>>>,
+    tx_new_certificates: Option<Arc<Sender<Certificate>>>,
 }
 
 impl Pea2Pea for Node {
@@ -101,7 +101,7 @@ impl Node {
             1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        self.tx_new_certificates = Some(Arc::new(Mutex::new(tx_new_certificates)));
+        self.tx_new_certificates = Some(Arc::new(tx_new_certificates));
         let (tx_sequence, mut rx_sequence) = metered_channel::channel(
             1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
@@ -142,7 +142,7 @@ impl Node {
     }
 
     pub(crate) async fn inject_cert(&self, cert: Certificate) {
-        self.tx_new_certificates.borrow().as_ref().unwrap().lock().unwrap().send(cert).await;
+        self.tx_new_certificates.borrow().as_ref().unwrap().send(cert).await.ok();
     }
 }
 
@@ -187,8 +187,8 @@ impl Reading for Node {
             ConsensusMessage::CertificateMessage(certs) => {
                 debug!("{} received certs message: {:?}", self.node.name(), certs);
                 for c in certs {
-                    let send = self.tx_new_certificates.borrow().as_ref().unwrap().lock().unwrap().send(c);
-                    send.await;
+                    let send = self.tx_new_certificates.borrow().as_ref().unwrap().send(c);
+                    send.await.ok();
                 }
                 Ok(())
             }

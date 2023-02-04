@@ -3,11 +3,14 @@ use std::io;
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
-use types::Certificate;
+use types::{Certificate, CommittedSubDag};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) enum ConsensusMessage {
     CertificateMessage(Vec<Certificate>),
+    CommittedCertificateMessage(Vec<Certificate>),
+    CommittedDagMessage(CommittedSubDag),
+    RoundUpdateMessage(u64),
 }
 
 #[derive(Default)]

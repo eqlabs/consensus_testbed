@@ -4,7 +4,6 @@ use consensus::{bullshark::Bullshark, metrics::ConsensusMetrics, Consensus};
 use crypto::{NetworkKeyPair, PublicKey};
 use fastcrypto::{
     bls12381::min_sig::BLS12381KeyPair,
-    hash::Hash,
     traits::{KeyPair, ToFromBytes},
 };
 use pea2pea::{
@@ -18,18 +17,20 @@ use rand::{
 };
 use std::{
     borrow::{Borrow},
-    collections::{BTreeSet, HashSet},
     io,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, collections::HashSet,
 };
 use storage::CertificateStore;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::watch,
 };
-use tracing::{debug};
-use types::{metered_channel, Certificate, ConsensusStore, PreSubscribedBroadcastSender};
+use tracing::debug;
+use types::{
+    metered_channel::{self, Sender},
+    Certificate, ConsensusStore, PreSubscribedBroadcastSender,
+};
 
 #[derive(Clone)]
 pub(crate) struct Node {
@@ -39,6 +40,9 @@ pub(crate) struct Node {
     pub(crate) own_network_keypair: Arc<NetworkKeyPair>,
     // likely peer keys
     pub(crate) other_keys: Arc<Mutex<HashSet<PublicKey>>>,
+
+    // channels
+    tx_new_certificates: Option<Arc<Mutex<Sender<Certificate>>>>,
 }
 
 impl Pea2Pea for Node {
@@ -65,6 +69,7 @@ impl Node {
             own_keypair,
             own_network_keypair,
             other_keys: Arc::new(Mutex::new(HashSet::new())),
+            tx_new_certificates: None,
         };
 
         node.enable_handshake().await;
@@ -77,7 +82,7 @@ impl Node {
 
     /// Spawn a task handling the consensus loop.
     pub(crate) async fn start_consensus(
-        &self,
+        &mut self,
         name: String,
         committee: Committee,
         store: Arc<ConsensusStore>,
@@ -96,7 +101,8 @@ impl Node {
             1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
-        let (tx_sequence, mut _rx_sequence) = metered_channel::channel(
+        self.tx_new_certificates = Some(Arc::new(Mutex::new(tx_new_certificates)));
+        let (tx_sequence, mut rx_sequence) = metered_channel::channel(
             1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
@@ -112,40 +118,31 @@ impl Node {
             protocol,
             metrics.clone(),
         );
-        let genesis = Certificate::genesis(&committee)
-            .iter()
-            .map(|x| x.digest())
-            .collect::<BTreeSet<_>>();
-        debug!("genesis: {:?}", &genesis);
-        let keys: Vec<_> = committee
-            .authorities
-            .iter()
-            .map(|(a, _)| a.clone())
-            .collect();
-        debug!("keys: {:?}", keys);
-        let (mut certificates, next_parents) =
-            test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &keys);
-
-        // Make two certificate (f+1) with round 3 to trigger the commits.
-        let (_, certificate) =
-            test_utils::mock_certificate(&committee, keys[0].clone(), 3, next_parents.clone());
-        certificates.push_back(certificate);
-        let (_, certificate) =
-            test_utils::mock_certificate(&committee, keys[1].clone(), 3, next_parents.clone());
-        certificates.push_back(certificate);
-        let (_, certificate) =
-            test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
-        certificates.push_back(certificate);
-        debug!("certs created: {:?}", certificates);
-        for cert in certificates {
-            tx_new_certificates.send(cert).await.ok();
-        }
         let name_clone = name.clone();
-        while let Some(c) = rx_commited_certificates.recv().await {
-            debug!("{} commited: {:?}", name_clone, c);
-            self.broadcast(ConsensusMessage::CertificateMessage(c.1)).ok();
+        loop {
+            tokio::select! {
+                Some(c) = rx_commited_certificates.recv() => {
+                    debug!("{} commited: {:?}", name_clone, c);
+                    self.broadcast(ConsensusMessage::CommittedCertificateMessage(c.1)).ok();
+                },
+                Some(c) = rx_sequence.recv() => {
+                    debug!("{} commited DAG: {:?}", name_clone, c);
+                    self.broadcast(ConsensusMessage::CommittedDagMessage(c)).ok();
+                }
+                // Some(c) = self.rx_consensus_round_updates.borrow_mut().borrow() => {
+                //     debug!("{} round update: {:?}", name_clone, c);
+                //     self.broadcast(ConsensusMessage::RoundUpdateMessage(c)).ok();
+                // }
+                else => {
+                    break;
+                }
+            }
         }
         debug!("handle: {:?}", _handle.await);
+    }
+
+    pub(crate) async fn inject_cert(&self, cert: Certificate) {
+        self.tx_new_certificates.borrow().as_ref().unwrap().lock().unwrap().send(cert).await;
     }
 }
 
@@ -179,8 +176,30 @@ impl Reading for Node {
 
     async fn process_message(&self, _source: SocketAddr, message: Self::Message) -> io::Result<()> {
         match message {
-            ConsensusMessage::CertificateMessage(a) => {
-                debug!("{} received message: {:?}", self.node.name(), a);
+            ConsensusMessage::CommittedCertificateMessage(a) => {
+                debug!(
+                    "{} received commited certs message: {:?}",
+                    self.node.name(),
+                    a
+                );
+                Ok(())
+            }
+            ConsensusMessage::CertificateMessage(certs) => {
+                debug!("{} received certs message: {:?}", self.node.name(), certs);
+                for c in certs {
+                    let send = self.tx_new_certificates.borrow().as_ref().unwrap().lock().unwrap().send(c);
+                    send.await;
+                }
+                Ok(())
+            }
+            ConsensusMessage::CommittedDagMessage(dag) => {
+                debug!("{} received dag message: {:?}", self.node.name(), dag);
+                // TODO: what to do here??
+                Ok(())
+            }
+            ConsensusMessage::RoundUpdateMessage(round) => {
+                debug!("{} received roundupdate message: {:?}", self.node.name(), round);
+                // TODO: what to do here??
                 Ok(())
             }
         }

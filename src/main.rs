@@ -2,12 +2,12 @@ mod message;
 mod node;
 
 use std::{
-    borrow::Borrow, collections::BTreeMap, path::Path, str::FromStr, sync::Arc, time::Duration,
+    borrow::Borrow, collections::{BTreeMap, BTreeSet}, path::Path, str::FromStr, sync::Arc, time::Duration,
 };
 
 use config::{Authority, Committee};
 use crypto::{NetworkKeyPair, PublicKey};
-use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair};
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair, hash::Hash};
 use multiaddr::Multiaddr;
 use pea2pea::{connect_nodes, Topology};
 use storage::CertificateStore;
@@ -72,15 +72,46 @@ async fn main() {
     let store = make_consensus_store(&Path::new("store"));
     let cert_store = make_certificate_store(&Path::new("cert_store"));
     // Start the consensus for all the nodes.
-    for node in nodes.iter().cloned() {
+    for node in nodes.iter_mut() {
         let committee = committee.clone();
         let store = store.clone();
         let cert_store = cert_store.clone();
 
+        let mut clone = node.clone();
         tokio::spawn(async move {
-            node.start_consensus(node.node.name().to_owned(), committee, store, cert_store)
+            clone.start_consensus(clone.node.name().to_owned(), committee, store, cert_store)
                 .await
         });
+    }
+
+    // send certs to node 0
+    let genesis = Certificate::genesis(&committee)
+        .iter()
+        .map(|x| x.digest())
+        .collect::<BTreeSet<_>>();
+    debug!("genesis: {:?}", &genesis);
+    let keys: Vec<_> = committee
+        .authorities
+        .iter()
+        .map(|(a, _)| a.clone())
+        .collect();
+    debug!("keys: {:?}", keys);
+    let (mut certificates, next_parents) =
+        test_utils::make_optimal_certificates(&committee, 1..=2, &genesis, &keys);
+
+    // Make two certificate (f+1) with round 3 to trigger the commits.
+    let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[0].clone(), 3, next_parents.clone());
+    certificates.push_back(certificate);
+    let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[1].clone(), 3, next_parents.clone());
+    certificates.push_back(certificate);
+    let (_, certificate) =
+        test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
+    certificates.push_back(certificate);
+    debug!("certs created: {:?}", certificates);
+    for cert in certificates {
+        nodes.get_mut(0).unwrap().inject_cert(cert).await;
     }
 
     // Wait for a desired amount of time to allow the nodes to do some work.

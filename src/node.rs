@@ -16,10 +16,11 @@ use rand::{
     SeedableRng,
 };
 use std::{
-    borrow::{Borrow},
+    borrow::Borrow,
+    collections::HashSet,
     io,
     net::SocketAddr,
-    sync::{Arc, Mutex}, collections::HashSet,
+    sync::{Arc, Mutex},
 };
 use storage::CertificateStore;
 use tokio::{
@@ -91,6 +92,7 @@ impl Node {
         let registry = Registry::new();
         let metrics = Arc::new(ConsensusMetrics::new(&registry));
         let protocol = Bullshark::new(committee.clone(), store.clone(), 50, metrics.clone());
+        debug!("{} creating channels", self.node.name().clone());
         let mut tx_shutdown = PreSubscribedBroadcastSender::new(25);
         let (tx_commited_certificates, mut rx_commited_certificates) = metered_channel::channel(
             1,
@@ -106,6 +108,7 @@ impl Node {
             1,
             &prometheus::IntGauge::new("TEST_COUNTER", "test counter").unwrap(),
         );
+        debug!("{} channels created", self.node.name().clone());
         let _handle = Consensus::spawn(
             committee.clone(),
             store,
@@ -142,7 +145,18 @@ impl Node {
     }
 
     pub(crate) async fn inject_cert(&self, cert: Certificate) {
-        self.tx_new_certificates.borrow().as_ref().unwrap().send(cert).await.ok();
+        debug!(
+            "{} channel: {:?}",
+            self.node.name().clone(),
+            &self.tx_new_certificates
+        );
+        self.tx_new_certificates
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .send(cert)
+            .await
+            .ok();
     }
 }
 
@@ -198,7 +212,11 @@ impl Reading for Node {
                 Ok(())
             }
             ConsensusMessage::RoundUpdateMessage(round) => {
-                debug!("{} received roundupdate message: {:?}", self.node.name(), round);
+                debug!(
+                    "{} received roundupdate message: {:?}",
+                    self.node.name(),
+                    round
+                );
                 // TODO: what to do here??
                 Ok(())
             }

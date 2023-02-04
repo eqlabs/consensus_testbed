@@ -2,12 +2,18 @@ mod message;
 mod node;
 
 use std::{
-    borrow::Borrow, collections::{BTreeMap, BTreeSet}, path::Path, str::FromStr, sync::Arc, time::Duration,
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    str::FromStr,
+    sync::Arc,
+    thread,
+    time::Duration,
 };
 
 use config::{Authority, Committee};
 use crypto::{NetworkKeyPair, PublicKey};
-use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, traits::KeyPair, hash::Hash};
+use fastcrypto::{bls12381::min_sig::BLS12381KeyPair, hash::Hash, traits::KeyPair};
 use multiaddr::Multiaddr;
 use pea2pea::{connect_nodes, Topology};
 use storage::CertificateStore;
@@ -42,9 +48,6 @@ async fn main() {
 
     // Connect the nodes in a dense mesh.
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
-    for node in nodes.iter() {
-        debug!("node other keys: {:?}", node.other_keys);
-    }
 
     // Create the committee
     let mut authorities = BTreeMap::new();
@@ -79,7 +82,8 @@ async fn main() {
 
         let mut clone = node.clone();
         tokio::spawn(async move {
-            clone.start_consensus(clone.node.name().to_owned(), committee, store, cert_store)
+            clone
+                .start_consensus(clone.node.name().to_owned(), committee, store, cert_store)
                 .await
         });
     }
@@ -110,6 +114,7 @@ async fn main() {
         test_utils::mock_certificate(&committee, keys[2].clone(), 3, next_parents.clone());
     certificates.push_back(certificate);
     debug!("certs created: {:?}", certificates);
+    thread::sleep(Duration::from_secs(2)); // wait until the channels are created in the async tasks
     for cert in certificates {
         nodes.get_mut(0).unwrap().inject_cert(cert).await;
     }

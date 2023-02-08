@@ -13,4 +13,28 @@ pea2pea = "0.45"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+tracing = "0.1.36"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# below are the dependencies for BFT
+consensus = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-consensus" }
+config = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-config" }
+crypto = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-crypto" }
+node = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-node" }
+worker = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-worker" }
+types = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-types" }
+storage = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-storage" }
+store = { git = "https://github.com/eqlabs/bullshark-bft/", package = "typed-store" }
+test-utils = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-test-utils" }
+mysten-metrics = { git = "https://github.com/eqlabs/bullshark-bft/" }
+sui-types = { git = "https://github.com/eqlabs/bullshark-bft/" }
+
+fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e" }
+# fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "f451422b7f15e75e055a1830cbe5d1547fa87b74", package = "fastcrypto-zkp" }
+# fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto", rev = "f451422b7f15e75e055a1830cbe5d1547fa87b74", package = "fastcrypto-tbls" }
+
+rand = { version = "0.8.5", features = ["small_rng"] }
+multiaddr = "0.17"
+prometheus = "0.13"
+arc-swap = "1.5.1"
+eyre = "0.6.8"

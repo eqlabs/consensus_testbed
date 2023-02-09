@@ -20,7 +20,7 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use crate::node::Node;
 
 // The number of nodes to spawn.
-const NUM_NODES: u16 = 2;
+const NUM_NODES: u16 = 5;
 // The amount of time in seconds the nodes are to be running.
 const RUNTIME_SECS: u64 = 60;
 
@@ -47,16 +47,16 @@ async fn main() -> Result<(), eyre::Report> {
     let parameters = Parameters {
         header_num_of_batches_threshold: 32,
         min_header_delay: Duration::from_millis(100),
+        max_header_delay: Duration::from_millis(20000),
         max_header_num_of_batches: 1000,
-        max_header_delay: Duration::from_secs(200),
         gc_depth: 10,
         sync_retry_delay: Duration::from_secs(10),
         sync_retry_nodes: 3,
-        batch_size: 500000,
+        batch_size: 50000,
         max_batch_delay: Duration::from_millis(200),
         block_synchronizer: block_sync_params,
         consensus_api_grpc,
-        max_concurrent_requests: 500000,
+        max_concurrent_requests: 50,
         prometheus_metrics,
         network_admin_server,
         anemo,
@@ -123,7 +123,10 @@ async fn main() -> Result<(), eyre::Report> {
         let c = committee.clone();
         let wc = worker_cache.clone();
         let h = tokio::spawn(async move {
-            let (primary, worker) = node.start_consensus(i, pk, nk, wk, p, s, c, wc).await.unwrap();
+            let (primary, worker) = node
+                .start_consensus(i, pk, nk, wk, p, s, c, wc)
+                .await
+                .unwrap();
             primary.wait().await;
             worker.wait().await;
         });
@@ -149,7 +152,9 @@ fn start_logger(default_level: LevelFilter) {
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .without_time()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
         .with_target(false)
         .init();
 }

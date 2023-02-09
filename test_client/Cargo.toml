@@ -1,5 +1,5 @@
 [package]
-name = "consensus_testbed"
+name = "test_client"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,18 +15,21 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 tracing = "0.1.36"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+lipsum = "0.8.2"
 
 # below are the dependencies for BFT
-consensus = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-consensus", features = ["benchmark"]  }
+consensus = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-consensus" }
 config = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-config" }
 crypto = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-crypto" }
-node = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-node", features = ["benchmark"]  }
-worker = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-worker", features = ["benchmark"] }
+executor = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-executor" }
+node = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-node" }
+worker = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-worker" }
 types = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-types" }
 storage = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-storage" }
 store = { git = "https://github.com/eqlabs/bullshark-bft/", package = "typed-store" }
 test-utils = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-test-utils" }
 mysten-metrics = { git = "https://github.com/eqlabs/bullshark-bft/" }
+mysten-network = { git = "https://github.com/eqlabs/bullshark-bft/" }
 sui-types = { git = "https://github.com/eqlabs/bullshark-bft/" }
 
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e" }
@@ -38,3 +41,5 @@ multiaddr = "0.17"
 prometheus = "0.13"
 arc-swap = "1.5.1"
 eyre = "0.6.8"
+tokio-stream = "0.1.11"
+futures-util = "0.3.26"

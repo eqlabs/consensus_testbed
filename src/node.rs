@@ -15,7 +15,10 @@ use fastcrypto::{
 };
 use mysten_metrics::RegistryService;
 use node::{
-    execution_state::SimpleExecutionState, primary_node::PrimaryNode, worker_node::WorkerNode,
+    execution_state::SimpleExecutionState,
+    metrics::{primary_metrics_registry, start_prometheus_server, worker_metrics_registry},
+    primary_node::PrimaryNode,
+    worker_node::WorkerNode,
 };
 use pea2pea::{
     protocols::{Handshake, Reading, Writing},
@@ -28,7 +31,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::mpsc::channel,
 };
-use tracing::debug;
+use tracing::{debug, info};
 use worker::TrivialTransactionValidator;
 
 use crate::message::{ConsensusCodec, ConsensusMessage};
@@ -104,6 +107,14 @@ impl Node {
                 Arc::new(SimpleExecutionState::new(_tx_transaction_confirmation)),
             )
             .await?;
+        let prom_address = parameters.clone().prometheus_metrics.socket_addr;
+        info!(
+            "Starting primary Prometheus HTTP metrics endpoint at {}",
+            prom_address
+        );
+        let registry = primary_metrics_registry(primary_pub.clone());
+        let _metrics_server_handle = start_prometheus_server(prom_address.clone(), &registry);
+
         debug!("created primary id {}", id);
 
         let registry_service = RegistryService::new(Registry::new());
@@ -120,6 +131,9 @@ impl Node {
             )
             .await?;
         debug!("created worker id {}", id);
+
+        let registry = worker_metrics_registry(id as u32, primary_pub);
+        let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
 
         Ok((primary, worker))
     }

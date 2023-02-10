@@ -20,6 +20,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 consensus = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-consensus", features = ["benchmark"]  }
 config = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-config" }
 crypto = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-crypto" }
+executor = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-executor" }
 node = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-node", features = ["benchmark"]  }
 worker = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-worker", features = ["benchmark"] }
 types = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-types" }

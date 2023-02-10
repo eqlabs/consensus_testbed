@@ -7,15 +7,16 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
+use async_trait::async_trait;
 use config::{Committee, Parameters, WorkerCache};
 use crypto::{NetworkKeyPair, PublicKey};
+use executor::ExecutionState;
 use fastcrypto::{
     bls12381::min_sig::BLS12381KeyPair,
     traits::{KeyPair, ToFromBytes},
 };
 use mysten_metrics::RegistryService;
 use node::{
-    execution_state::SimpleExecutionState,
     metrics::{primary_metrics_registry, start_prometheus_server, worker_metrics_registry},
     primary_node::PrimaryNode,
     worker_node::WorkerNode,
@@ -29,9 +30,10 @@ use storage::NodeStorage;
 use sui_types::crypto::AuthorityKeyPair;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc::channel,
+    sync::mpsc::{channel, Sender},
 };
-use tracing::{debug, info};
+use tracing::{error, info};
+use types::ConsensusOutput;
 use worker::TrivialTransactionValidator;
 
 use crate::message::{ConsensusCodec, ConsensusMessage};
@@ -92,7 +94,7 @@ impl Node {
         committee: Arc<ArcSwap<Committee>>,
         worker_cache: Arc<ArcSwap<WorkerCache>>,
     ) -> Result<(PrimaryNode, WorkerNode), eyre::Report> {
-        let (_tx_transaction_confirmation, _rx_transaction_confirmation) = channel(100);
+        let (tx_transaction_confirmation, mut rx_transaction_confirmation) = channel(100);
 
         let registry_service = RegistryService::new(Registry::new());
         let primary_pub = self.own_keypair.public().clone();
@@ -104,7 +106,7 @@ impl Node {
                 committee.clone(),
                 worker_cache.clone(),
                 &p_store,
-                Arc::new(SimpleExecutionState::new(_tx_transaction_confirmation)),
+                Arc::new(MyExecutionState::new(id, tx_transaction_confirmation)),
             )
             .await?;
         let prom_address = parameters.clone().prometheus_metrics.socket_addr;
@@ -115,7 +117,7 @@ impl Node {
         let registry = primary_metrics_registry(primary_pub.clone());
         let _metrics_server_handle = start_prometheus_server(prom_address.clone(), &registry);
 
-        debug!("created primary id {}", id);
+        info!("created primary id {}", id);
 
         let registry_service = RegistryService::new(Registry::new());
         let worker = WorkerNode::new(0, parameters.clone(), registry_service);
@@ -130,10 +132,18 @@ impl Node {
                 None,
             )
             .await?;
-        debug!("created worker id {}", id);
+        info!("created worker id {}", id);
 
         let registry = worker_metrics_registry(id as u32, primary_pub);
         let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
+
+        tokio::spawn(async move {
+            while let Some(_t) = rx_transaction_confirmation.recv().await {
+                // what to do here?
+                // we must keep rx_transaction_confirmation in scope or the tx side fails sending
+            }
+        })
+        .await?;
 
         Ok((primary, worker))
     }
@@ -186,5 +196,44 @@ impl Writing for Node {
 
     fn codec(&self, _addr: SocketAddr, _side: ConnectionSide) -> Self::Codec {
         Default::default()
+    }
+}
+
+pub struct MyExecutionState {
+    id: usize,
+    tx_transaction_confirmation: Sender<Vec<u8>>,
+}
+
+impl MyExecutionState {
+    pub fn new(id: usize, tx_transaction_confirmation: Sender<Vec<u8>>) -> Self {
+        Self {
+            id,
+            tx_transaction_confirmation,
+        }
+    }
+}
+
+#[async_trait]
+impl ExecutionState for MyExecutionState {
+    async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
+        info!(
+            "Node {} consensus output: {:?} batches",
+            self.id,
+            consensus_output.batches.len()
+        );
+        for (_, batches) in consensus_output.batches {
+            for batch in batches {
+                for transaction in batch.transactions.into_iter() {
+                    if let Err(err) = self.tx_transaction_confirmation.send(transaction).await {
+                        error!("Failed to send txn in SimpleExecutionState: {}", err);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn last_executed_sub_dag_index(&self) -> u64 {
+        info!("Node {} last_executed_sub_dag_index() called", self.id);
+        0
     }
 }

@@ -28,11 +28,8 @@ use pea2pea::{
 use prometheus::Registry;
 use storage::NodeStorage;
 use sui_types::crypto::AuthorityKeyPair;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc::{channel, Sender},
-};
-use tracing::{error, info};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::info;
 use types::ConsensusOutput;
 use worker::TrivialTransactionValidator;
 
@@ -94,8 +91,6 @@ impl Node {
         committee: Arc<ArcSwap<Committee>>,
         worker_cache: Arc<ArcSwap<WorkerCache>>,
     ) -> Result<(PrimaryNode, WorkerNode), eyre::Report> {
-        let (tx_transaction_confirmation, mut rx_transaction_confirmation) = channel(100);
-
         let registry_service = RegistryService::new(Registry::new());
         let primary_pub = self.own_keypair.public().clone();
         let primary = PrimaryNode::new(parameters.clone(), true, registry_service);
@@ -106,7 +101,7 @@ impl Node {
                 committee.clone(),
                 worker_cache.clone(),
                 &p_store,
-                Arc::new(MyExecutionState::new(id, tx_transaction_confirmation)),
+                Arc::new(MyExecutionState::new(id, self.clone())),
             )
             .await?;
         let prom_address = parameters.clone().prometheus_metrics.socket_addr;
@@ -137,15 +132,15 @@ impl Node {
         let registry = worker_metrics_registry(id as u32, primary_pub);
         let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
 
-        tokio::spawn(async move {
-            while let Some(_t) = rx_transaction_confirmation.recv().await {
-                // what to do here?
-                // we must keep rx_transaction_confirmation in scope or the tx side fails sending
-            }
-        })
-        .await?;
-
         Ok((primary, worker))
+    }
+
+    /// save the ordered transactions
+    async fn save_consensus(&self, _consensus_output: ConsensusOutput) {}
+
+    /// TODO: load this from storage
+    async fn last_executed_sub_dag_index(&self) -> u64 {
+        0
     }
 }
 
@@ -201,39 +196,29 @@ impl Writing for Node {
 
 pub struct MyExecutionState {
     id: usize,
-    tx_transaction_confirmation: Sender<Vec<u8>>,
+    node: Node,
 }
 
 impl MyExecutionState {
-    pub fn new(id: usize, tx_transaction_confirmation: Sender<Vec<u8>>) -> Self {
-        Self {
-            id,
-            tx_transaction_confirmation,
-        }
+    pub(crate) fn new(id: usize, node: Node) -> Self {
+        Self { id, node }
     }
 }
 
 #[async_trait]
 impl ExecutionState for MyExecutionState {
+    /// Receive the consensus result with the ordered transactions in `ConsensusOutupt`
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
         info!(
             "Node {} consensus output: {:?} batches",
             self.id,
             consensus_output.batches.len()
         );
-        for (_, batches) in consensus_output.batches {
-            for batch in batches {
-                for transaction in batch.transactions.into_iter() {
-                    if let Err(err) = self.tx_transaction_confirmation.send(transaction).await {
-                        error!("Failed to send txn in SimpleExecutionState: {}", err);
-                    }
-                }
-            }
-        }
+        self.node.save_consensus(consensus_output).await;
     }
 
     async fn last_executed_sub_dag_index(&self) -> u64 {
         info!("Node {} last_executed_sub_dag_index() called", self.id);
-        0
+        self.node.last_executed_sub_dag_index().await
     }
 }

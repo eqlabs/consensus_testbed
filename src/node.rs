@@ -87,11 +87,11 @@ impl Node {
         network_keypair: NetworkKeyPair,
         worker_keypair: NetworkKeyPair,
         parameters: Parameters,
-        store: NodeStorage,
+        p_store: NodeStorage,
+        w_store: NodeStorage,
         committee: Arc<ArcSwap<Committee>>,
         worker_cache: Arc<ArcSwap<WorkerCache>>,
     ) -> Result<(PrimaryNode, WorkerNode), eyre::Report> {
-        // let node = self.clone();
         let (_tx_transaction_confirmation, _rx_transaction_confirmation) = channel(100);
 
         let registry_service = RegistryService::new(Registry::new());
@@ -103,7 +103,7 @@ impl Node {
                 network_keypair,
                 committee.clone(),
                 worker_cache.clone(),
-                &store,
+                &p_store,
                 Arc::new(SimpleExecutionState::new(_tx_transaction_confirmation)),
             )
             .await?;
@@ -125,7 +125,7 @@ impl Node {
                 worker_keypair,
                 committee.clone(),
                 worker_cache,
-                &store,
+                &w_store,
                 TrivialTransactionValidator::default(),
                 None,
             )

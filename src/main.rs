@@ -46,8 +46,8 @@ async fn main() -> Result<(), eyre::Report> {
     let anemo = AnemoParameters::default();
     let parameters = Parameters {
         header_num_of_batches_threshold: 32,
-        min_header_delay: Duration::from_millis(100),
-        max_header_delay: Duration::from_millis(20000),
+        min_header_delay: Duration::from_secs(10),
+        max_header_delay: Duration::from_secs(20),
         max_header_num_of_batches: 1000,
         gc_depth: 10,
         sync_retry_delay: Duration::from_secs(10),
@@ -109,22 +109,22 @@ async fn main() -> Result<(), eyre::Report> {
     connect_nodes(&nodes, Topology::Mesh).await.unwrap();
 
     // Start the consensus for all the nodes.
-    let store_path = "store";
-    let store = NodeStorage::reopen(store_path);
     let mut handles = Vec::new();
     for (i, node) in nodes.into_iter().enumerate() {
+        let store_path = format!("store-{i}");
+        let p_store = NodeStorage::reopen(store_path);
+        let store_path = format!("store-{i}-0"); // we only spawn 1 worker per primary for now
+        let w_store = NodeStorage::reopen(store_path);
         let committee = committee.clone();
-        let store = store.clone();
         let p = parameters.clone();
         let pk = primary_keys.remove(0);
         let nk = network_keys.remove(0);
         let wk = worker_keys.remove(0);
-        let s = store.clone();
         let c = committee.clone();
         let wc = worker_cache.clone();
         let h = tokio::spawn(async move {
             let (primary, worker) = node
-                .start_consensus(i, pk, nk, wk, p, s, c, wc)
+                .start_consensus(i, pk, nk, wk, p, p_store, w_store, c, wc)
                 .await
                 .unwrap();
             primary.wait().await;
@@ -134,10 +134,10 @@ async fn main() -> Result<(), eyre::Report> {
     }
 
     // Wait for a desired amount of time to allow the nodes to do some work.
-    sleep(Duration::from_secs(RUNTIME_SECS)).await;
     for h in handles {
         h.await?;
     }
+    sleep(Duration::from_secs(RUNTIME_SECS)).await;
     Ok(())
 }
 
@@ -152,9 +152,9 @@ fn start_logger(default_level: LevelFilter) {
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_ids(true)
+        // .with_file(true)
+        // .with_line_number(true)
+        // .with_thread_ids(true)
         .with_target(false)
         .init();
 }

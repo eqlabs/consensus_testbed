@@ -1,4 +1,3 @@
 target
-store/
-cert_store/
+store*
 .vscode

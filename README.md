@@ -6,7 +6,10 @@ this starts NUM_NODES (default 5) nodes in pea2pea and also narwhal network on t
 * 3008 + 2i : worker to worker
 * 3009 + 2i : transactions worker
 
-usage: `cargo run`
+usage: 
+```
+rm -rf store* && RUST_LOG=debug cargo run
+```
 
 to inject transactions, use the test_client crate provided:
 

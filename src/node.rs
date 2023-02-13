@@ -38,6 +38,8 @@ impl Node {
         node
     }
 
+    // TODO: move the below 2 functions to a trait?
+
     /// save the ordered transactions
     pub(crate) async fn save_consensus(&self, _consensus_output: ConsensusOutput) {}
 

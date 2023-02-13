@@ -79,6 +79,9 @@ impl Consensus {
         })
     }
 
+    /// Start the primary and worker node
+    /// only 1 worker is spawned ATM
+    /// caller must call `wait().await` on primary and worker
     pub(crate) async fn start(
         self,
         node: &Node,
@@ -121,7 +124,7 @@ impl Consensus {
             .await?;
         info!("created worker id {}", self.id);
 
-        let registry = worker_metrics_registry(self.id as u32, primary_pub);
+        let registry = worker_metrics_registry(self.id, primary_pub);
         let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
         Ok((primary, worker))
     }

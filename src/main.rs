@@ -5,14 +5,11 @@ mod node;
 use crate::consensus::Consensus;
 use crate::node::Node;
 use pea2pea::{connect_nodes, Topology};
-use std::time::Duration;
-use tokio::time::sleep;
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
 // The number of nodes to spawn.
 const NUM_NODES: u16 = 4;
 // The amount of time in seconds the nodes are to be running.
-const RUNTIME_SECS: u64 = 60;
 
 #[tokio::main]
 async fn main() -> Result<(), eyre::Report> {
@@ -40,11 +37,9 @@ async fn main() -> Result<(), eyre::Report> {
         handles.push(h);
     }
 
-    // Wait for a desired amount of time to allow the nodes to do some work.
     for h in handles {
         h.await?;
     }
-    sleep(Duration::from_secs(RUNTIME_SECS)).await;
     Ok(())
 }
 

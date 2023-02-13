@@ -147,9 +147,11 @@ impl ExecutionState for MyExecutionState {
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
         if !consensus_output.batches.is_empty() {
             info!(
-                "Node {} consensus output: {:?} batches",
+                "Node {} consensus output for round {}: {:?} batches, leader: {:?}",
                 self.id,
-                consensus_output.batches.len()
+                consensus_output.sub_dag.leader.header.round,
+                consensus_output.batches.len(),
+                consensus_output.sub_dag.leader.header.author,
             );
             self.node.save_consensus(consensus_output).await;
         }

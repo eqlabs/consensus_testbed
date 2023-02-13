@@ -145,12 +145,14 @@ impl MyExecutionState {
 impl ExecutionState for MyExecutionState {
     /// Receive the consensus result with the ordered transactions in `ConsensusOutupt`
     async fn handle_consensus_output(&self, consensus_output: ConsensusOutput) {
-        info!(
-            "Node {} consensus output: {:?} batches",
-            self.id,
-            consensus_output.batches.len()
-        );
-        self.node.save_consensus(consensus_output).await;
+        if !consensus_output.batches.is_empty() {
+            info!(
+                "Node {} consensus output: {:?} batches",
+                self.id,
+                consensus_output.batches.len()
+            );
+            self.node.save_consensus(consensus_output).await;
+        }
     }
 
     async fn last_executed_sub_dag_index(&self) -> u64 {

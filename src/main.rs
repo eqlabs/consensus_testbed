@@ -57,6 +57,6 @@ fn start_logger(default_level: LevelFilter) {
         // .with_file(true)
         // .with_line_number(true)
         // .with_thread_ids(true)
-        .with_target(false)
+        .with_target(true)
         .init();
 }

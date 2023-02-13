@@ -29,6 +29,7 @@ store = { git = "https://github.com/eqlabs/bullshark-bft/", package = "typed-sto
 test-utils = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-test-utils" }
 mysten-metrics = { git = "https://github.com/eqlabs/bullshark-bft/" }
 sui-types = { git = "https://github.com/eqlabs/bullshark-bft/" }
+sui-keys = { git = "https://github.com/eqlabs/bullshark-bft/" }
 
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "235211dc8195590f5353d38135f5ee51a267521e" }
 # fastcrypto-zkp = { git = "https://github.com/MystenLabs/fastcrypto", rev = "f451422b7f15e75e055a1830cbe5d1547fa87b74", package = "fastcrypto-zkp" }

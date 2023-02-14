@@ -7,12 +7,7 @@ use executor::ExecutionState;
 use eyre::Context;
 use fastcrypto::traits::KeyPair;
 use mysten_metrics::RegistryService;
-use node::{
-    metrics::{primary_metrics_registry, start_prometheus_server, worker_metrics_registry},
-    primary_node::PrimaryNode,
-    worker_node::WorkerNode,
-    NodeStorage,
-};
+use node::{primary_node::PrimaryNode, worker_node::WorkerNode, NodeStorage};
 use prometheus::Registry;
 use std::sync::Arc;
 use sui_keys::keypair_file::{read_authority_keypair_from_file, read_network_keypair_from_file};
@@ -86,9 +81,12 @@ impl Consensus {
         self,
         node: &Node,
     ) -> Result<(PrimaryNode, WorkerNode), eyre::Report> {
-        let registry_service = RegistryService::new(Registry::new());
         let primary_pub = self.primary_keypair.public().clone();
-        let primary = PrimaryNode::new(self.parameters.clone(), true, registry_service);
+        let primary = PrimaryNode::new(
+            self.parameters.clone(),
+            true,
+            RegistryService::new(Registry::new()),
+        );
         primary
             .start(
                 self.primary_keypair,
@@ -99,18 +97,14 @@ impl Consensus {
                 Arc::new(MyExecutionState::new(self.id, node.clone())),
             )
             .await?;
-        let prom_address = self.parameters.clone().prometheus_metrics.socket_addr;
-        info!(
-            "Starting primary Prometheus HTTP metrics endpoint at {}",
-            prom_address
-        );
-        let registry = primary_metrics_registry(primary_pub.clone());
-        let _metrics_server_handle = start_prometheus_server(prom_address.clone(), &registry);
 
         info!("created primary id {}", self.id);
 
-        let registry_service = RegistryService::new(Registry::new());
-        let worker = WorkerNode::new(0, self.parameters.clone(), registry_service);
+        let worker = WorkerNode::new(
+            0,
+            self.parameters.clone(),
+            RegistryService::new(Registry::new()),
+        );
         worker
             .start(
                 primary_pub.clone(),
@@ -124,8 +118,6 @@ impl Consensus {
             .await?;
         info!("created worker id {}", self.id);
 
-        let registry = worker_metrics_registry(self.id, primary_pub);
-        let _metrics_server_handle = start_prometheus_server(prom_address, &registry);
         Ok((primary, worker))
     }
 }

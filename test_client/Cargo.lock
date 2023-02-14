@@ -3724,50 +3724,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "narwhal-test-utils"
-version = "0.1.0"
-source = "git+https://github.com/eqlabs/bullshark-bft/#9606f1b3d1439e78b8f568223f6693238b76cebe"
-dependencies = [
- "anemo",
- "arc-swap",
- "base64 0.13.1",
- "bincode",
- "bytes",
- "derive_builder",
- "fastcrypto",
- "fdlimit",
- "futures",
- "indexmap",
- "itertools",
- "multiaddr",
- "mysten-metrics",
- "mysten-network",
- "narwhal-config",
- "narwhal-crypto",
- "narwhal-executor",
- "narwhal-network",
- "narwhal-node",
- "narwhal-primary",
- "narwhal-storage",
- "narwhal-types",
- "narwhal-worker",
- "once_cell",
- "prometheus",
- "rand 0.8.5",
- "serde",
- "telemetry-subscribers",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util 0.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "tonic",
- "tower",
- "tracing",
- "typed-store",
- "workspace-hack",
-]
-
-[[package]]
 name = "narwhal-types"
 version = "0.1.0"
 source = "git+https://github.com/eqlabs/bullshark-bft/#9606f1b3d1439e78b8f568223f6693238b76cebe"
@@ -6169,7 +6125,6 @@ dependencies = [
  "narwhal-executor",
  "narwhal-node",
  "narwhal-storage",
- "narwhal-test-utils",
  "narwhal-types",
  "narwhal-worker",
  "pea2pea",

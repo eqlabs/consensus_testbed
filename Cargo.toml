@@ -26,7 +26,6 @@ worker = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-
 types = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-types" }
 storage = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-storage" }
 store = { git = "https://github.com/eqlabs/bullshark-bft/", package = "typed-store" }
-test-utils = { git = "https://github.com/eqlabs/bullshark-bft/", package = "narwhal-test-utils" }
 mysten-metrics = { git = "https://github.com/eqlabs/bullshark-bft/" }
 sui-types = { git = "https://github.com/eqlabs/bullshark-bft/" }
 sui-keys = { git = "https://github.com/eqlabs/bullshark-bft/" }
